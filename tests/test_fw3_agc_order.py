@@ -1,4 +1,5 @@
 # ProsperoTV - FW 3.x AGC/VideoDec2 startup regression
+# Copyright (C) 2026 BlackBearReloaded
 # SPDX-License-Identifier: GPL-3.0-or-later
 from pathlib import Path
 import unittest
