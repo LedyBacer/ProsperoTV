@@ -290,8 +290,8 @@ jobs:
         env:
           # Install this FW3 experiment beside the real ProsperoTV title.
           # Only the test PR branch gets a separate app and forced debug logs.
-          TV_TEST_TITLE: ${{ github.event_name == 'pull_request' && github.head_ref == 'fix/fw3-agc-before-decoder-warmup' && 'PPSA88003' || '' }}
-          TV_DEBUG_TRACE: ${{ github.event_name == 'pull_request' && github.head_ref == 'fix/fw3-agc-before-decoder-warmup' && '1' || '' }}
+          TV_TEST_TITLE: ${{ ((github.event_name == 'pull_request' && github.head_ref == 'fix/fw3-agc-before-decoder-warmup') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/fw3-agc-before-decoder-warmup')) && 'PPSA88003' || '' }}
+          TV_DEBUG_TRACE: ${{ ((github.event_name == 'pull_request' && github.head_ref == 'fix/fw3-agc-before-decoder-warmup') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/fw3-agc-before-decoder-warmup')) && '1' || '' }}
         run: |
           HOST_CXX=clang++-18 bash opengl-ui/ps5/assemble.sh "$RUNNER_TEMP/app-build"
           # The packaging step uses TITLE_ID from GITHUB_ENV, which normally
