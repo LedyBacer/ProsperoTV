@@ -287,19 +287,7 @@ jobs:
       # checked: the UI kit, the OpenGL SDK, the payload SDK, the ports, the
       # audio decoders, the fonts and the helper sent to the payload loader.
       - name: Assemble the build tree
-        env:
-          # Install this FW3 experiment beside the real ProsperoTV title.
-          # Only the test PR branch gets a separate app and forced debug logs.
-          TV_TEST_TITLE: ${{ ((github.event_name == 'pull_request' && github.head_ref == 'fix/fw3-agc-before-decoder-warmup') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/fw3-agc-before-decoder-warmup')) && 'PPSA88003' || '' }}
-          TV_DEBUG_TRACE: ${{ ((github.event_name == 'pull_request' && github.head_ref == 'fix/fw3-agc-before-decoder-warmup') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/fw3-agc-before-decoder-warmup')) && '1' || '' }}
-        run: |
-          HOST_CXX=clang++-18 bash opengl-ui/ps5/assemble.sh "$RUNNER_TEMP/app-build"
-          # The packaging step uses TITLE_ID from GITHUB_ENV, which normally
-          # comes from the release title before the temporary tree is assembled.
-          # Override it for this disposable, separately installed test title.
-          if [[ -n ${TV_TEST_TITLE:-} ]]; then
-            echo "TITLE_ID=$TV_TEST_TITLE" >> "$GITHUB_ENV"
-          fi
+        run: HOST_CXX=clang++-18 bash opengl-ui/ps5/assemble.sh "$RUNNER_TEMP/app-build"
 
       - name: Build the app
         run: make -C "$RUNNER_TEMP/app-build" app

@@ -26,12 +26,16 @@ class Fw3AgcOrder(unittest.TestCase):
         self.assertIn("void iptv_native_backend_preload_video", patch)
         self.assertIn("void iptv_native_backend_warm", patch)
 
-    def test_pr_installs_isolated_debug_title(self):
+    def test_production_workflow_uses_normal_title_and_logging(self):
         workflow = (ROOT / ".github/workflows/tooling.yml").read_text()
-        self.assertIn("TV_TEST_TITLE:", workflow)
-        self.assertIn("TV_DEBUG_TRACE:", workflow)
-        self.assertIn("PPSA88003", workflow)
-        self.assertIn("github.event_name == 'pull_request'", workflow)
+        self.assertNotIn("PPSA88003", workflow)
+        self.assertNotIn("TV_TEST_TITLE:", workflow)
+        self.assertNotIn("TV_DEBUG_TRACE:", workflow)
+        self.assertNotIn("fix/fw3-agc-before-decoder-warmup", workflow)
+        self.assertIn('run: HOST_CXX=clang++-18 bash opengl-ui/ps5/assemble.sh "$RUNNER_TEMP/app-build"', workflow)
+        patch = (ROOT / "opengl-ui/ps5/patch_tree.py").read_text()
+        self.assertIn('test_title = os.environ.get("TV_TEST_TITLE", "")', patch)
+        self.assertIn('debug_trace = os.environ.get("TV_DEBUG_TRACE", "")', patch)
 
 
 if __name__ == "__main__":

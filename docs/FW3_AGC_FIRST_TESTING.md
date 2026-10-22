@@ -1,50 +1,48 @@
-# FW 3.00 AGC-first startup hardware test
+# AGC-first startup ordering for legacy PS5 firmware
 
-This PR changes only the released OpenGL UI assembly path. It is an
-**experimental** firmware compatibility fix, pending a FW 3.00 and current-FW
-hardware check. It does **not** alter VideoDec2 codec, stream parsing, or VRR.
+## Problem and fix
 
-## Why
+FW 3.00 hardware tests showed ProsperoTV's normal startup could fail when
+`sceVideodec2QueryComputeMemoryInfo` ran before the OpenGL runtime initialized
+AGC. Related ProsperoLight testing observed NULL
+`sceAgcGetRegisterDefaults` and a failed menu startup.
 
-On FW 3.00, ProsperoLight testing isolated a startup order problem:
-`sceVideodec2QueryComputeMemoryInfo` before AGC initialization could cause
-`sceAgcGetRegisterDefaults` to be NULL and leave a black screen. Initializing
-AGC first restored the menu. ProsperoTV's `iptv_native_backend_warm` similarly
-used to run that compute query immediately on entry, ahead of OpenGL.
+The released ProsperoTV OpenGL UI now follows this sequence:
 
-This build:
-1. Preloads the VideoDec2 module **before** EGL (preserves loader constraints).
-2. Initializes the existing OpenGL runtime's AGC via a temporary EGL Display
-   context, then closes the context.
-3. Warms compute, H.264/HEVC/VP9, and AAC **after** AGC, still **before**
-   filesystem elevation.
-4. Opens the normal menu display and player later, as before.
+1. Preload the VideoDec2 system module **before EGL and elevation**, retaining
+   the system module-loader workaround.
+2. Open and close a temporary `ps5::Display` to initialize AGC through the
+   **same EGL/OpenGL runtime** used by the normal menu.
+3. Query VideoDec2 compute, H.264, HEVC and VP9 decoder memory requirements,
+   and warm AAC, all **after AGC** and **before filesystem elevation**.
+4. Continue with the usual menu/player lifecycle. No special firmware flag,
+   encoder setting, or graphics SDK fork is needed.
 
-The temporary EGL context is deliberate: it avoids calling
-`sceAgcInit` directly with the wrong API signature or bypassing the
-OpenGL runtime's internal initialized-state bookkeeping.
+Do not call `sceAgcInit` directly in the app: the runtime has its own
+initialization state and a different one-argument ABI from the older
+two-argument native presenter's declaration. The first EGL bootstrap keeps
+these consistent.
 
-## How to test
+The fix is enabled in ordinary production builds. Previous test-only
+workflow overrides for `TV_TEST_TITLE=PPSA88003` and `TV_DEBUG_TRACE=1`
+were removed. `TV_TEST_TITLE` and `TV_DEBUG_TRACE` remain optional
+pre-existing developer features in `patch_tree.py`, not new production
+dependencies. CI builds its regular release title, `PPSA99003`.
 
-The CI workflow for this PR's branch builds the released UI with
-`TV_TEST_TITLE=PPSA88003` and `TV_DEBUG_TRACE=1`. Use the **app** artifact,
-`ProsperoTV-app-PR<id>-<sha>`, **not** the root legacy-app artifact.
-After extracting the GitHub artifact, install the enclosed
-`PPSA88003.zip` as a separate title. It must **not** replace the released
-`PPSA99003` installation or share its config.
+## Validation
 
-On FW 3.00, first start the app and confirm the menu paints and responds.
-Then try an H.264 TV channel, HEVC if available, and return to the menu.
-Repeat on a newer FW. Inspect the build label, the output/decoder startup
-receipts, and the forced debug log. Preserve any fresh crash report and note
-the exact FW and enabler version. If it crashes before logs initialize,
-capture kernel/debug output: the bootstrap occurs before per-user storage.
+- FW 3.x: startup fix confirmed by tester; verify cold launch, menu and
+  controller navigation, at least one H.264 playback session, returning to
+  the menu and relaunching.
+- Newer firmware: perform the same smoke test, optionally with HEVC/VP9,
+  before the pull request is merged. The extra EGL open/close is universal
+  and is not guarded by a firmware-version check.
+- Review `[TV][FWCompat]` messages and, if a failure occurs, attach a fresh
+  crash record plus the firmware and homebrew enabler versions.
+- Because initialization happens before `tv::storage::initialize()`,
+  early faults may require console/kernel debug output rather than
+  the application's per-user logs.
 
-Look for `[TV][FWCompat]` entries:
-- video module preload rc
-- early AGC via EGL opened and EGL error
-- decoder warm-up after AGC compute/H.264/HEVC/VP9 return codes
-
-Do not merge before receiving hardware confirmation of both startup and
-playback. Initializing a throwaway EGL context this early also changes
-threading/display lifecycle timing, which must be verified on hardware.
+The patch does not alter actual codec decoding, audio playback, VRR, or HFR
+policy. The production candidate should be merged only after both legacy
+and modern firmware smoke tests and full GitHub Actions validation.
