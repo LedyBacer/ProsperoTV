@@ -22,6 +22,7 @@
 #include "iptv_native_agc_present.h"
 #include "iptv_remote.h"
 #include "iptv_store.h"
+#include "iptv_tv_remote.h"
 #include "platform/ps5/audio_out.hpp"
 #include "platform/ps5/display_egl.hpp"
 #include "platform/ps5/pad.hpp"
@@ -32,6 +33,7 @@
 #include "tv/i18n.hpp"
 #include <atomic>
 #include "tv/remote_input.hpp"
+#include "tv/tv_remote_input.hpp"
 #include "tv_build_options.h"
 #include "tv_dev.hpp"
 #include "tv_diag.hpp"
@@ -73,9 +75,9 @@ extern "C" int sceSystemServiceParamGetInt(int parameter, int *value);
 extern "C" int sceUserServiceInitialize(void *);
 extern "C" int sceUserServiceGetInitialUser(std::int32_t *);
 extern "C" int sceUserServiceGetUserName(std::int32_t, char *, std::size_t);
-// The player's decoders, loaded and woken (ps5/patch_tree.py adds it to the
-// player's backend): [0] the video module, [1] its compute part, [2..4] H.264,
-// HEVC and VP9, [5] the audio module and its AAC library.
+// The player's decoder bootstrap, supplied by ps5/patch_tree.py. Preload the
+// video module before EGL but perform compute/codec queries only *after* AGC.
+extern "C" void iptv_native_backend_preload_video(std::int32_t results[6]);
 extern "C" void iptv_native_backend_warm(std::int32_t results[6]);
 extern "C" int sceKernelSendNotificationRequest(std::uint32_t device, void *request,
                                                 std::size_t size, int blocking);
@@ -416,6 +418,8 @@ bool run_menu(ptv::Model &model, ptv::Settings *settings, const LastPlayback &la
     // The controller opens the user service, which the keyboard needs too.
     ps5::Pad pad;
     const bool pad_ready = pad.open();
+    const int tv_remote = iptv_tv_remote_open();
+    say("[TV] tv remote open=0x%08x", static_cast<unsigned>(tv_remote));
 
     audio::Mixer mixer;
     int menu_volume = settings->volume;
@@ -489,6 +493,11 @@ bool run_menu(ptv::Model &model, ptv::Settings *settings, const LastPlayback &la
         if (g_menu_sessions == 1)
             app.play_intro();
         InputTracker tracker;
+        // The TV remote's own: its OK always confirms, whatever Cross and Circle do.
+        InputTracker tv_tracker;
+        PadSample tv_samples[64];
+        std::uint32_t tv_words[64];
+        bool pad_cross_held = g_cross_held;
         ui::Feedback feedback;
         ptv::Frame frame;
         FrameStats stats;
@@ -527,6 +536,15 @@ bool run_menu(ptv::Model &model, ptv::Settings *settings, const LastPlayback &la
             }
             InputFrame input = tracker.update(std::span<const PadSample>(samples, count),
                                               static_cast<std::uint64_t>(now));
+            const int tv_count = iptv_tv_remote_read(tv_words, 64);
+            for (int i = 0; i < tv_count; ++i)
+                tv_samples[i] =
+                    ptv::tv_remote_sample(tv_words[i], static_cast<std::uint64_t>(now));
+            const InputFrame tv_input =
+                tv_tracker.update(std::span<const PadSample>(tv_samples, std::size_t(tv_count)),
+                                  static_cast<std::uint64_t>(now));
+            if (!script.active())
+                ptv::merge_tv_remote(input, tv_input);
             iptv_remote_enable_search(!resolving_portal && app.accepts_remote_search());
             iptv_remote_set_sources_handler(
                 resolving_portal || app.storage_busy() || app.storage_open()
@@ -591,8 +609,10 @@ bool run_menu(ptv::Model &model, ptv::Settings *settings, const LastPlayback &la
             if (iptv_remote_search(remote_query) && !resolving_portal)
                 app.remote_search(remote_query);
             if (count > 0)
-                g_cross_held = samples[count - 1].connected &&
-                               (samples[count - 1].buttons & pad_bits::kCross) != 0;
+                pad_cross_held = samples[count - 1].connected &&
+                                 (samples[count - 1].buttons & pad_bits::kCross) != 0;
+            // An OK on the remote that opened the keyboard is not typed either.
+            g_cross_held = pad_cross_held || tv_input.is_held(Action::confirm);
 
             feedback.clear();
             if (!resolving_portal)
@@ -801,6 +821,7 @@ bool run_menu(ptv::Model &model, ptv::Settings *settings, const LastPlayback &la
                 app.stop_preview();
                 model.close();
                 audio_out.stop();
+                iptv_tv_remote_close();
                 pad.close();
                 sys::quit();
             }
@@ -812,6 +833,7 @@ bool run_menu(ptv::Model &model, ptv::Settings *settings, const LastPlayback &la
                 app.stop_preview();
                 model.close();
                 audio_out.stop();
+                iptv_tv_remote_close();
                 pad.close();
                 sys::quit();
             }
@@ -835,6 +857,7 @@ bool run_menu(ptv::Model &model, ptv::Settings *settings, const LastPlayback &la
     // finally the display itself.
     model.close();
     audio_out.stop();
+    iptv_tv_remote_close();
     pad.close();
     g_cross_held = false;
     renderer.release();
@@ -1175,16 +1198,39 @@ int main()
 {
     say("[TV] entry");
 
-    // The system modules the app will ask for, loaded before anything else.
-    // With filesystem access the process no longer sees the sandbox the
-    // system loader resolves modules in, and once the OpenGL runtime has
-    // started the video decoder's module no longer loads either (0x80020016 on
-    // hardware). Loaded first, they stay for the life of the process, and the
-    // player's and the keyboard's own loads and unloads only count. The
-    // decoders load parts of themselves at their first use: they are asked
-    // now, so those parts are there too.
+    // VideoDec2 must load before EGL and before elevation, but FW 3.00
+    // cannot tolerate its compute-memory query before AGC is initialized.
+    // Open and close a throwaway EGL display once to initialize the same AGC
+    // runtime that the real menu uses; do not create a player presenter or
+    // perform a second sceAgcInit with a different API signature.
     std::int32_t decoders[6] = {};
+    iptv_native_backend_preload_video(decoders);
+    say("[TV][FWCompat] video module preload rc=0x%08x", static_cast<unsigned>(decoders[0]));
+    if (decoders[0] < 0)
+    {
+        say("[TV][FWCompat] video module preload failed; stopping before AGC");
+        notify_failure("Video module preload failed");
+        sys::park();
+    }
+    {
+        ps5::Display bootstrap;
+        say("[TV][FWCompat] early AGC via EGL begin");
+        const bool opened = bootstrap.open();
+        say("[TV][FWCompat] early AGC via EGL opened=%u error=0x%08x",
+            opened ? 1u : 0u, static_cast<unsigned>(bootstrap.last_error()));
+        bootstrap.close();
+        if (!opened)
+        {
+            notify_failure("AGC-first EGL bootstrap failed");
+            sys::park();
+        }
+    }
+    say("[TV][FWCompat] decoder warm-up after AGC begin");
     iptv_native_backend_warm(decoders);
+    say("[TV][FWCompat] decoder warm-up after AGC compute=0x%08x h264=0x%08x "
+        "hevc=0x%08x vp9=0x%08x", static_cast<unsigned>(decoders[1]),
+        static_cast<unsigned>(decoders[2]), static_cast<unsigned>(decoders[3]),
+        static_cast<unsigned>(decoders[4]));
     std::memcpy(g_decoder_modules, decoders, sizeof(g_decoder_modules));
     const int dialogs = sceCommonDialogInitialize();
     const int keyboard = sceSysmoduleLoadModule(kKeyboardModule);

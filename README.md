@@ -62,7 +62,7 @@
 | Shell title | `ProsperoTV` |
 | Title ID | `PPSA99003` |
 | Shell category | Media |
-| Current version | `01.000.080` |
+| Current version | `01.000.090` |
 | Release-version source | [`sce_sys/param.json`](sce_sys/param.json) |
 | Writable data | `/data/prosperotv`; the title's own `/download0` when filesystem access is not available |
 
@@ -251,6 +251,9 @@ at 3840×2160. Codec and renderer details are documented in
 | R3 in the channel browser | Open the programme guide |
 | L3 in Live TV / Favorites | Open Multiview; Square chooses a channel, Triangle switches two/four tiles, R3 mutes, Cross opens full screen |
 | Options | Refresh the selected catalog source |
+| Cross during playback | Pause or resume; in the open channel list, watch the channel |
+| L2 during live TV | Open or close the channel list |
+| Up at the top of a screen, or Circle on Live TV | Focus the tabs; Left / Right change the tab, Down, Cross or Circle go back in; Left of Home is Search |
 | Circle during playback | Close the open panel, or stop playback and return to the browser |
 | Options during playback | Open or close the audio/subtitle/picture panel |
 | L1 / R1 in the playback panel | Switch between Audio, Subtitles and Picture |
@@ -260,6 +263,26 @@ During playback, Options then L1 opens Picture. Fit preserves the decoded pictur
 proportions by default; Stretch fills the screen, while 4:3 and 16:9 correct
 anamorphic or incorrectly advertised proportions. The choice lasts for the current
 playback session. Picture correction applies to live TV, movies and episodes.
+
+### TV remote
+
+The television's own remote works too, over HDMI-CEC, as it does in the
+console's menus. Turn on **Settings > System > HDMI > Enable HDMI Device Link**
+on the console (and the TV's CEC setting, for example BRAVIA Sync on Sony TVs).
+The remote can be used alongside the controller or instead of it.
+
+| Remote key | In the menu | During playback |
+| --- | --- | --- |
+| Arrows | Move focus; Up from the top of a screen reaches the tabs, Left / Right there change the tab, and Left of Home is Search | As the D-pad |
+| OK | Select, open, or play | As Cross: pause or resume, or watch the channel in the open list |
+| Back | Back | Close the open panel, or stop playback |
+| Play / Pause | Play the channel in focus | Pause or resume, even with a list or the panel open |
+| Rewind / Fast forward | Previous or next page | Step back and on, as Left and Right |
+| Channel − / Channel + | As L1 / R1, if the TV passes them on | As L1 / R1: previous or next channel on live TV |
+| Menu / Options | As Options | Open or close the playback panel |
+
+Which keys a television passes on is up to the television; arrows, OK and Back
+are the ones every CEC remote sends.
 
 ## Channels, lists and playback in detail
 
@@ -566,7 +589,7 @@ scheduled or promised; issues asking for one, or for something else, are welcome
 Thank you to the people who test ProsperoTV on their own consoles and report what they find:
 
 - **Bastian-R-dotcom** ([GitHub](https://github.com/Bastian-R-dotcom)), for the reports and requests behind Movies and TV shows, the Xtream and M3U fixes, the handling of badly formatted media, the 4K colour report, the film details report and newest-first On Demand.
-- **Cold** ([GitHub](https://github.com/JMUtechnologies)), for helping with testing, and for the channel-by-channel sound measurements that found 5.1 sound playing too quietly.
+- **Cold** ([GitHub](https://github.com/JMUtechnologies)), for helping with testing, the channel-by-channel sound measurements that found 5.1 sound playing too quietly, and the report of channels missing from a category.
 - **Lighting999**, for the Jordan TV report that led to live playlists of any length.
 - **laurensramandt** ([GitHub](https://github.com/laurensramandt)), for asking for custom user agents.
 - **tvk-source** ([GitHub](https://github.com/tvk-source)), for asking for M3U Plus support.
@@ -575,8 +598,9 @@ Thank you to the people who test ProsperoTV on their own consoles and report wha
 
 And to the people who contribute code:
 
-- **ThatGuyKalvin** ([GitHub](https://github.com/ThatGuyKalvin)), for the playback menu, channel list and controls drawn at the screen's resolution, DTS sound, lip sync timed by when each picture reaches the screen, the sound in the statistics line, pictures 0.4 s sooner at every start and seek, newest-first On Demand, PlayStation button shapes in every hint, keeping whole lists when a provider sends oversized data, seeking within the open video, the HDR colour fix, the Stats line switch, the Continue row of a show, long on-demand lists and the quicker On Demand menu.
+- **ThatGuyKalvin** ([GitHub](https://github.com/ThatGuyKalvin)), for the playback menu, channel list and controls drawn at the screen's resolution, DTS sound, lip sync timed by when each picture reaches the screen, the sound in the statistics line, pictures 0.4 s sooner at every start and seek, newest-first On Demand, PlayStation button shapes in every hint, keeping whole lists when a provider sends oversized data, seeking within the open video, the HDR colour fix, the Stats line switch, the Continue row of a show, long on-demand lists, the quicker On Demand menu, the TV remote and the film and show counts of a source.
 - **Cold** ([GitHub](https://github.com/JMUtechnologies)), for **Normalize channel volume**, which brings quiet and loud channels to a similar level.
+- **Oliv3rmoon** ([GitHub](https://github.com/Oliv3rmoon)), for listing a channel in every category its provider names.
 
 <!-- bbr-footer:start -->
 <!-- Generated by ps5-homebrew-dev-protocol/scripts/readme-footer. Edit the template there, not here. -->
